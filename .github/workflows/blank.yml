@@ -1,0 +1,199 @@
+rm(list=ls())  #Clear all variables in R's memory
+
+library(forecast)
+library(tseries)
+library(Kendall)
+library(dplyr)  
+library(ggplot2)
+library(xlsx)
+library(ggpubr)
+library(Hmisc)
+require(graphics)
+library(XLConnect)
+library(corrplot)
+library(readxl)
+library(lubridate)
+library(datetime)
+library(reshape2)
+library(smooth)
+
+#read in all the historical data
+data2016=read.csv(file="ERCOT_DA_Prices_2016.csv", header = TRUE)
+data2017=read.csv(file="ERCOT_DA_Prices_2017.csv", header = TRUE)
+data2018=read.csv(file="ERCOT_DA_Prices_2018.csv", header = TRUE)
+data2019=read.csv(file="ERCOT_DA_Prices_2019.csv", header = TRUE)
+
+#combine it into a single data structure
+datall=merge.data.frame(data2016, data2017, all="TRUE")
+datall=merge.data.frame(datall, data2018, all="TRUE")
+datall=merge.data.frame(datall, data2019, all="TRUE")
+
+#reading all the different hubs and loadzones
+settlementpoints= unique(datall['SettlementPoint'])
+
+HB_BUSAVG=subset(datall,SettlementPoint %in% c("HB_BUSAVG"))
+HB_HOUSTON=subset(datall,SettlementPoint %in% c("HB_HOUSTON"))
+HB_HUBAVG=subset(datall,SettlementPoint %in% c("HB_HUBAVG"))
+HB_NORTH=subset(datall,SettlementPoint %in% c("HB_NORTH"))
+HB_SOUTH=subset(datall,SettlementPoint %in% c("HB_SOUTH"))
+HB_WEST=subset(datall,SettlementPoint %in% c("HB_WEST"))
+HB_PAN=subset(datall,SettlementPoint %in% c("HB_PAN"))
+
+LZ_AEN=subset(datall,SettlementPoint %in% c("LZ_AEN"))
+LZ_CPS=subset(datall,SettlementPoint %in% c("LZ_CPS"))
+LZ_HOUSTON=subset(datall,SettlementPoint %in% c("LZ_HOUSTON"))
+LZ_LCRA=subset(datall,SettlementPoint %in% c("LZ_LCRA"))
+LZ_NORTH=subset(datall,SettlementPoint %in% c("LZ_NORTH"))
+LZ_RAYBN=subset(datall,SettlementPoint %in% c("LZ_RAYBN"))
+LZ_SOUTH=subset(datall,SettlementPoint %in% c("LZ_SOUTH"))
+LZ_WEST=subset(datall,SettlementPoint %in% c("LZ_WEST"))
+
+change_hours <- function(temp1){
+  temp2=temp1
+  row.names(temp2) <- NULL
+  temp2$Date = strptime(temp2$Date, format='%Y-%m-%d %H:%M:%S')
+  temp2 <- temp2 %>% mutate( Month = month(temp2$Date))
+  nobs=nrow(temp2)
+  for (i in 1:35060) 
+  {
+    if (year(temp2$Date[i])==2016) 
+    {
+      temp2$Month[i]=temp2$Month[i]+0
+    }
+    else if (year(temp2$Date[i])==2017) 
+    {
+      temp2$Month[i]=temp2$Month[i]+12
+    }
+    else if (year(temp2$Date[i])==2018)
+    {
+      temp2$Month[i]=temp2$Month[i]+24
+    }
+    else if (year(temp2$Date[i])==2019)
+    {
+      temp2$Month[i]=temp2$Month[i]+36
+    }
+  }
+  return(temp2)
+}
+
+
+HB_BUSAVG=change_hours(HB_BUSAVG)
+HB_HOUSTON=change_hours(HB_HOUSTON)
+HB_HUBAVG=change_hours(HB_HUBAVG)
+HB_NORTH=change_hours(HB_NORTH)
+HB_SOUTH=change_hours(HB_SOUTH)
+HB_WEST=change_hours(HB_WEST)
+LZ_AEN=change_hours(LZ_AEN)
+LZ_CPS=change_hours(LZ_CPS)
+LZ_HOUSTON=change_hours(LZ_HOUSTON)
+LZ_LCRA=change_hours(LZ_LCRA)
+LZ_NORTH=change_hours(LZ_NORTH)
+LZ_RAYBN=change_hours(LZ_RAYBN)
+LZ_SOUTH=change_hours(LZ_SOUTH)
+LZ_WEST=change_hours(LZ_WEST)
+
+
+
+mo_av1= HB_BUSAVG %>% group_by(HB_BUSAVG$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av2= HB_HOUSTON %>% group_by(HB_HOUSTON$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av3= HB_HUBAVG %>% group_by(HB_HUBAVG$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av4= HB_NORTH %>% group_by(HB_NORTH$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av5= HB_SOUTH %>% group_by(HB_SOUTH$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av6= HB_WEST %>% group_by(HB_WEST$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av7= LZ_AEN %>% group_by(LZ_AEN$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av8= LZ_CPS %>% group_by(LZ_CPS$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av9= LZ_HOUSTON %>% group_by(LZ_HOUSTON$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av10= LZ_LCRA %>% group_by(LZ_LCRA$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av11= LZ_NORTH %>% group_by(LZ_NORTH$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av12= LZ_RAYBN %>% group_by(LZ_RAYBN$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av13= LZ_SOUTH %>% group_by(LZ_SOUTH$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av14= LZ_WEST %>% group_by(LZ_WEST$Month) %>% summarise(MonthAvg = mean(Price))
+mo_av15= HB_PAN %>% group_by(HB_PAN$Month) %>% summarise(MonthAvg = mean(Price))
+
+HB_BUSAVG[HB_BUSAVG$Price<=0] =NA
+volatility1= sd(log(HB_BUSAVG$Price))
+HB_HOUSTON[HB_HOUSTON$Price<=0] =NA
+volatility2= sd(log(HB_HOUSTON$Price))
+HB_HUBAVG[HB_HUBAVG$Price<=0] =NA
+volatility3= sd(log(HB_HUBAVG$Price))
+HB_NORTH[HB_NORTH$Price<=0] =NA
+volatility4= sd(log(HB_NORTH$Price))
+HB_SOUTH[HB_SOUTH$Price<=0] =NA
+volatility5= sd(log(HB_SOUTH$Price))
+HB_WEST[HB_WEST$Price<=0] =NA
+volatility6= sd(log(HB_WEST$Price))
+
+volatility=c(volatility1, volatility2, volatility3, volatility4, volatility5, volatility6)
+plot(volatility)
+
+df1= do.call(cbind, Map(data.frame, A=mo_av1, B=mo_av2,C=mo_av3,D=mo_av4,E=mo_av5,F=mo_av6,G=mo_av7,H=mo_av8,I=mo_av9,J=mo_av10,K=mo_av11,L=mo_av12,M=mo_av13,N=mo_av14))
+
+write.csv(df1,"C:\\Users\\Rajat\\Desktop\\Duke NSOE\\Jobs\\Companies\\cQuant io\\energy-analyst-data-exercise-public-master\\RajatPungaliya_cQuant_Output\\MyData.csv", row.names = FALSE)
+
+
+plot(mo_av1, type='line', col='blue')
+
+require(ggplot2)
+require(reshape2)
+
+hub_avg=data.frame(time = 1:48, a=mo_av1, b=mo_av2, c=mo_av3, d=mo_av4, e=mo_av5, f=mo_av6)
+hub_avg=melt(hub_avg, id.vars='time', variable.name='series')
+ggplot(hub_avg,  aes(time,value))+ geom_line (aes(colour = series))
+
+load_avg=data.frame(time = 1:48, a=mo_av7, b=mo_av8, c=mo_av9, d=mo_av10, e=mo_av11, f=mo_av12, g=mo_av13, h=mo_av14)
+load_avg=melt(load_avg, id.vars='time', variable.name='series')
+ggplot(load_avg,  aes(time,value))+ geom_line (aes(colour = series))
+
+
+#Time Series Analysis
+firstHour <- 24*(as.Date("2019-12-31 23:00:00")-as.Date("2016-01-01 00:00:00"))
+hub_avg_ts= ts(HB_BUSAVG$Price, start = c(2016,firstHour), frequency = 24*365)
+Acf(hub_avg_ts,lag.max = 40)
+Pacf(hub_avg_ts,lag.max = 40)
+decomp=decompose(hub_avg_ts)
+plot(decomp)
+deseasonal_price=seasadj(decomp)
+plot(hub_avg_ts,type="l")
+lines(deseasonal_price,col="blue")
+
+#ARIMA- non seasonal arima on non seasonal data
+fit_nonseas=auto.arima(deseasonal_price,max.D = 0,max.P = 0,max.Q = 0)
+print(fit_nonseas)
+
+nonseas_for=forecast(fit_nonseas,h=24*365) #h=horizon, how many steps ahead of time to forecast
+plot(nonseas_for)
+
+#arima 2- SARIMA on original prie data
+fit_seas=auto.arima(hub_avg_ts)
+print(fit_seas)
+seas_for=forecast(fit_seas,h=24*365) #h=horizon, how many steps ahead of time to forecast
+plot(seas_for)
+
+#3 simple moving average
+fit_mamodel=sma(deseasonal_price,h=24*365,holdout=FALSE, silent=FALSE, order=3)
+plot(fit_mamodel)
+
+#4 simple exponential smoothing
+fit_sesmodel=ses(deseasonal_price,h=24*365,alpha=0.2,holdout=FALSE,silent=FALSE)
+summary(fit_sesmodel)
+autoplot(fit_sesmodel)
+
+plot(deseasonal_price,col="black")
+lines(fit_sesmodel$fitted,col="blue")
+
+#5 TBATS model
+hub_avg_ts.msts = msts(hub_avg_ts,seasonal.periods = c(24*1,24*7,24*365.25),ts.frequency = 24*365)
+plot(hub_avg_ts.msts)
+
+Acf(hub_avg_ts.msts)
+Pacf(hub_avg_ts.msts)
+auto.arima(hub_avg_ts.msts)
+
+hub_avg_ts.tbats = tbats(hub_avg_ts.msts,use.arma.errors = TRUE)
+f1=forecast(hub_avg_ts.tbats,h=8760)
+plot(f1, ylim =c(-1000,10000))
+hub_avg_ts.tbats.components =tbats.components(gc2)
+plot(hub_avg_ts.tbats.components)
+plot(resid(hub_avg_ts.tbats))
+error.hub_avg_ts=resid(hub_avg_ts.tbats)
+adf.test(hub_avg_ts)
